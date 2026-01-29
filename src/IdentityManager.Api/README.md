@@ -40,3 +40,23 @@ Register user
 - POST /api/user/register
 - Content-Type: application/json
 - Request body example:
+- Successful response: 200 OK
+  - Body: { "message": "User registered successfully", "user": { ...ApplicationUser... } }
+- Validation errors: 400 Bad Request with HttpValidationProblemDetails (error details keyed by field)
+
+## Validation & Errors
+Requests are validated using FluentValidation. Validation failures and Identity creation errors return structured problem details (HttpValidationProblemDetails) to make client-side handling straightforward.
+
+## Extending
+- Add login/auth token issuance (JWT) in ConfigureAuth and AuthHandler.
+- Implement email confirmation and password reset flows via Identity.
+- Add integration and unit tests for handlers and validators.
+- Harden password rules and Identity options in Program.cs.
+
+## Troubleshooting
+- Ensure the connection string is correct and the database is reachable.
+- If migrations fail, confirm EF tools are installed: `dotnet tool install --global dotnet-ef` or use the Package Manager Console.
+- Check the application logs for validation and Identity errors.
+
+## Contributing
+Pull requests welcome — keep changes small and focused. Run tests and include migration updates as needed.

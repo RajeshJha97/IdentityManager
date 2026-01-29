@@ -21,6 +21,14 @@ builder.Services.AddDbContext<AppDbContext>(options => {
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>();
+builder.Services.Configure<IdentityOptions>(options => {
+
+    options.Password.RequireNonAlphanumeric = false;
+    options.Lockout.MaxFailedAccessAttempts = 3;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromHours(2);
+    options.SignIn.RequireConfirmedEmail = false;
+});
+
 builder.Services.AddScoped<AuthHandler>();
 
 var app = builder.Build();
