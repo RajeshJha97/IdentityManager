@@ -3,22 +3,74 @@
 Lightweight ASP.NET Core minimal API for user identity management using ASP.NET Core Identity and Entity Framework Core.
 
 ## Overview
-IdentityManager.Api provides basic user registration and validation built with .NET 8 and C# 12. It exposes minimal API endpoints backed by an AuthHandler that handles validation (FluentValidation) and user creation (Identity + EF Core).
+IdentityManager.Api provides endpoints for user registration, login, email confirmation and account removal. It uses ASP.NET Core Identity (ApplicationUser) with EF Core (SQL Server) and FluentValidation for request validation. Built with .NET 8 and C# 12 using Minimal APIs.
 
 ## Key features
-- User registration endpoint: POST /api/user/register
+- Register, login, email confirmation and remove user endpoints
 - ASP.NET Core Identity integration (ApplicationUser)
 - EF Core with SQL Server (AppDbContext)
-- FluentValidation validators for request models
-- Minimal API style with single-file endpoint mapping
+- FluentValidation validators discovered via assembly scan
+- Minimal API style with single-file endpoint mapping (ConfigureAuth)
 
-## Tech stack
-- .NET 8
-- C# 12
-- ASP.NET Core Minimal APIs
-- Microsoft.AspNetCore.Identity
-- Entity Framework Core (SQL Server)
-- FluentValidation
+## Endpoints
+- POST /api/user/register
+  - Request (application/json):
+    ```json
+    {
+      "name": "Doe",
+      "email": "user@example.com",
+      "password": "P@ssw0rd!",
+      "confirmPassword": "P@ssw0rd!"      
+    }
+    ```
+  - Success: 200 OK with message and created user metadata (id, email, userName, firstName, lastName)
+  - Validation errors: 400 Bad Request (HttpValidationProblemDetails)
+
+- POST /api/user/login
+  - Request:
+    ```json
+    {
+      "email": "user@example.com",
+      "password": "P@ssw0rd!"
+    }
+    ```
+  - Success: 200 OK (handler currently returns sign-in result or problem details)
+  - Failed login: structured problem details or 400/401 depending on handler logic
+
+- POST /api/user/emailconfirmation
+  - Request:
+    ```json
+    {
+      "email": "user@example.com",
+      "token": "base64-or-url-encoded-token"
+    }
+    ```
+  - Success: 200 OK when confirmation token is valid
+  - Errors: 400 Bad Request with problem details
+
+- DELETE /api/user/remove
+  - Request (application/json):
+    ```json
+    {
+      "email": "user@example.com"
+    }
+    ```
+  - Success: 200 OK on successful removal or structured error otherwise
+
+Notes:
+- Endpoints are registered in src/IdentityManager.Api/Endpoints/ConfigureAuth.cs via MapAuthEndpoints.
+- Handler implementations live in src/IdentityManager.Api/Handlers/AuthHandler.cs.
+
+## Configuration highlights (Program.cs)
+- DbContext: Connection string key `ConnectionStrings:IdentityConnection` (SQL Server).
+- Identity:
+  - ApplicationUser + IdentityRole with EF stores and default token providers.
+  - Email confirmation required: SignIn.RequireConfirmedEmail = true
+  - Password non-alphanumeric not required by default: Password.RequireNonAlphanumeric = false
+  - Lockout policy: MaxFailedAccessAttempts = 3, DefaultLockoutTimeSpan = 2 hours
+  - Email tokens use the default provider (TokenOptions.DefaultEmailProvider)
+- FluentValidation scanners:
+  - Validators are registered via AddValidatorsFromAssembly(typeof(Program).Assembly, includeInternalTypes: true)
 
 ## Getting started
 
@@ -34,29 +86,29 @@ Prerequisites
    - Or via CLI: `dotnet ef migrations add Initial` and `dotnet ef database update`
 4. Set the web project as startup, then run (__F5__ or __Debug > Start Debugging__).
 
-## API
-
-Register user
-- POST /api/user/register
-- Content-Type: application/json
-- Request body example:
-- Successful response: 200 OK
-  - Body: { "message": "User registered successfully", "user": { ...ApplicationUser... } }
-- Validation errors: 400 Bad Request with HttpValidationProblemDetails (error details keyed by field)
+Environment tips
+- For local secrets prefer __dotnet user-secrets__ or environment variables for connection strings and any future JWT keys.
+- Ensure EF tools are available: `dotnet tool install --global dotnet-ef` (or use the Package Manager Console).
 
 ## Validation & Errors
-Requests are validated using FluentValidation. Validation failures and Identity creation errors return structured problem details (HttpValidationProblemDetails) to make client-side handling straightforward.
+Requests are validated using FluentValidation. Validation failures and Identity errors return structured problem details (HttpValidationProblemDetails) to aid client-side handling. Check application logs for more details.
 
 ## Extending
-- Add login/auth token issuance (JWT) in ConfigureAuth and AuthHandler.
-- Implement email confirmation and password reset flows via Identity.
-- Add integration and unit tests for handlers and validators.
-- Harden password rules and Identity options in Program.cs.
+- Add JWT issuance on login and authentication middleware (AuthHandler and ConfigureAuth are the integration points).
+- Implement email sending for confirmation tokens (Identity currently requires confirmed email).
+- Add password reset flows and additional Identity options as needed.
+- Add integration and unit tests (xUnit/NUnit + WebApplicationFactory for Minimal APIs).
 
 ## Troubleshooting
 - Ensure the connection string is correct and the database is reachable.
-- If migrations fail, confirm EF tools are installed: `dotnet tool install --global dotnet-ef` or use the Package Manager Console.
-- Check the application logs for validation and Identity errors.
+- If migrations fail, confirm EF tools are installed or run migrations from __Package Manager Console__.
+- If you get 400 responses, inspect the response body for HttpValidationProblemDetails to see field-level errors.
+- Check the application logs (console or configured sinks) for validation and Identity errors.
 
 ## Contributing
-Pull requests welcome — keep changes small and focused. Run tests and include migration updates as needed.
+Pull requests welcome — keep changes small and focused. Run tests and include migration updates as needed. Follow the existing coding style and add tests for new behavior.
+
+## Notes / TODO
+- Consider adding Swagger UI in non-development environments behind authentication.
+- Add rate limiting, logging improvements and request throttling before production use.
+- Consider dockerizing the API and the database for easier local development.

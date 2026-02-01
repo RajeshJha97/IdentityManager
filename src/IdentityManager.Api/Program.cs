@@ -20,13 +20,17 @@ builder.Services.AddDbContext<AppDbContext>(options => {
 });
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
-    .AddEntityFrameworkStores<AppDbContext>();
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddDefaultTokenProviders();
+
 builder.Services.Configure<IdentityOptions>(options => {
 
     options.Password.RequireNonAlphanumeric = false;
     options.Lockout.MaxFailedAccessAttempts = 3;
     options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromHours(2);
-    options.SignIn.RequireConfirmedEmail = false;
+
+    options.Tokens.EmailConfirmationTokenProvider = TokenOptions.DefaultEmailProvider;
+    options.SignIn.RequireConfirmedEmail = true;
 });
 
 builder.Services.AddScoped<AuthHandler>();

@@ -4,4 +4,6 @@ public class AuthDto
 {
     public record UserRegistration(string Name,string Email,string Password,string ConfirmPassword);
     public record Login(string Email,string Password,bool RememberMe);
+    public record EmailCofirmation(string Email, string Token);
+    public record RemoveUser(string Email);
 }

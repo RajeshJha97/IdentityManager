@@ -1,5 +1,4 @@
-﻿using Azure.Identity;
-using FluentValidation;
+﻿using FluentValidation;
 using IdentityManager.Api.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -7,9 +6,9 @@ using static IdentityManager.Api.Models.Dto.AuthDto;
 
 namespace IdentityManager.Api.Handlers;
 
-public class AuthHandler([FromServices]UserManager<ApplicationUser> userManager, [FromServices]SignInManager<ApplicationUser>signInManager,
-    [FromServices] ILogger<AuthHandler> logger, 
-    IValidator<UserRegistration>registerationValidator,IValidator<Login> loginValidator )
+public class AuthHandler([FromServices] UserManager<ApplicationUser> userManager, [FromServices] SignInManager<ApplicationUser> signInManager,
+    [FromServices] ILogger<AuthHandler> logger,
+    IValidator<UserRegistration> registerationValidator, IValidator<Login> loginValidator, IValidator<RemoveUser> removeUserValidator, IValidator<EmailCofirmation> emailConfirmationValidator)
 {
     public async Task<IResult> HandleUserRegistration(UserRegistration request)
     {
@@ -21,20 +20,21 @@ public class AuthHandler([FromServices]UserManager<ApplicationUser> userManager,
             logger.LogWarning("user validation fails, input is not in a correct format.");
             var problemDetails = new HttpValidationProblemDetails(validationResult.ToDictionary())
             {
-                Status=StatusCodes.Status400BadRequest,
-                Title="One or More validation errors occured.",
-                Detail="See the error property for details."
+                Status = StatusCodes.Status400BadRequest,
+                Title = "One or More validation errors occured.",
+                Detail = "See the error property for details."
             };
             return Results.BadRequest(problemDetails);
         }
-        var user = new ApplicationUser { 
-        
-            UserName=request.Email,
-            Name=request.Name,
-            Email=request.Email
+        var user = new ApplicationUser
+        {
+
+            UserName = request.Email,
+            Name = request.Name,
+            Email = request.Email
 
         };
-        var result=await userManager.CreateAsync(user, request.Password);
+        var result = await userManager.CreateAsync(user, request.Password);
 
         if (!result.Succeeded)
         {
@@ -49,14 +49,61 @@ public class AuthHandler([FromServices]UserManager<ApplicationUser> userManager,
             };
             return Results.BadRequest(userCreationProblemDetails);
         }
-        
-        return Results.Ok(new { message="User registered successfully",user});
-    }
+        var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
 
+        return Results.Ok(new { message = $"Please confirm the email with the code :{token}", });
+    }
+    public async Task<IResult> HandleEmailConfirmation(EmailCofirmation request)
+    {
+        logger.LogInformation("Login handler invoked: ");
+        var validationResult = await emailConfirmationValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            logger.LogWarning("user validation fails, input is not in a correct format.");
+            var problemDetails = new HttpValidationProblemDetails(validationResult.ToDictionary())
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "One or More validation errors occured.",
+                Detail = "See the error property for details."
+            };
+
+            return Results.BadRequest(problemDetails);
+        }
+        var user = await userManager.FindByEmailAsync(request.Email);
+        if (user is null)
+        {
+            return Results.Ok(new
+            {
+
+                Status = StatusCodes.Status400BadRequest,
+                Message = "Please provide a valid user"
+            });
+        }
+
+        var emailConfirmation = await userManager.ConfirmEmailAsync(user, request.Token);
+
+        if (!emailConfirmation.Succeeded)
+        {
+            return Results.Ok(new
+            {
+
+                Status = StatusCodes.Status400BadRequest,
+                Message = "Something went wrong."
+            });
+        }
+
+        return Results.Ok(new
+        {
+
+            Status = StatusCodes.Status200OK,
+            Message = "Email validated successfully."
+        });
+
+    }
     public async Task<IResult> HandleLogin(Login request)
     {
         logger.LogInformation("Login handler invoked: ");
-        var validationResult=await loginValidator.ValidateAsync(request);
+        var validationResult = await loginValidator.ValidateAsync(request);
         if (!validationResult.IsValid)
         {
             logger.LogWarning("user validation fails, input is not in a correct format.");
@@ -70,7 +117,29 @@ public class AuthHandler([FromServices]UserManager<ApplicationUser> userManager,
             return Results.BadRequest(problemDetails);
         }
 
-        var signInUser=await signInManager.PasswordSignInAsync(request.Email, request.Password, request.RememberMe, lockoutOnFailure: true);
+        var signInUser = await signInManager.PasswordSignInAsync(request.Email, request.Password, request.RememberMe, lockoutOnFailure: true);
+        var user = await userManager.FindByEmailAsync(request.Email);
+
+        if (user is null)
+        {
+            return Results.Ok(new
+            {
+
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Please registered the user.",
+            });
+        }
+
+        if (!user!.EmailConfirmed)
+        {
+            var emailCode = await userManager.GenerateEmailConfirmationTokenAsync(user);
+            return Results.Ok(new
+            {
+
+                Status = StatusCodes.Status400BadRequest,
+                Title = $"Please confirm your email with the code : {emailCode}",
+            });
+        }
 
         if (signInUser.IsLockedOut)
         {
@@ -90,26 +159,75 @@ public class AuthHandler([FromServices]UserManager<ApplicationUser> userManager,
             logger.LogWarning("user validation fails, user attempted with wrong credentials.");
             var signInProblemDetails = new
             {
-                Status=StatusCodes.Status401Unauthorized,
-                Title="Incorrect email/password."
+                Status = StatusCodes.Status401Unauthorized,
+                Title = "Incorrect email/password."
             };
 
             return Results.Ok(signInProblemDetails);
         }
-        
 
-        var user = await userManager.FindByEmailAsync(request.Email);       
-        var success = new { 
-        
-            Status=StatusCodes.Status200OK,
-            Title="User authenticated successfully.",
-            UserDetails=new {
+
+        var success = new
+        {
+
+            Status = StatusCodes.Status200OK,
+            Title = "User authenticated successfully.",
+            UserDetails = new
+            {
                 user!.Id,
-                UserName =user!.Name,
-                user!.Email,                
+                UserName = user!.Name,
+                user!.Email,
             }
         };
 
         return Results.Ok(success);
+    }
+    public async Task<IResult> HandleRemoveUser(RemoveUser request)
+    {
+        logger.LogInformation("Login handler invoked: ");
+        var validationResult = await removeUserValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            logger.LogWarning("user validation fails, input is not in a correct format.");
+            var problemDetails = new HttpValidationProblemDetails(validationResult.ToDictionary())
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "One or More validation errors occured.",
+                Detail = "See the error property for details."
+            };
+
+            return Results.BadRequest(problemDetails);
+        }
+
+        var user = await userManager.FindByEmailAsync(request.Email);
+
+        if (user is null)
+        {
+            return Results.Ok(new
+            {
+
+                Status = StatusCodes.Status400BadRequest,
+                Message = "Please provide a valid user"
+            });
+        }
+
+        var result = await userManager.DeleteAsync(user);
+
+        if (!result.Succeeded)
+        {
+            return Results.Ok(new
+            {
+
+                Status = StatusCodes.Status400BadRequest,
+                Message = "Something went wrong."
+            });
+        }
+
+        return Results.Ok(new
+        {
+
+            Status = StatusCodes.Status200OK,
+            Message = "User deleted from the identity."
+        });
     }
 }
