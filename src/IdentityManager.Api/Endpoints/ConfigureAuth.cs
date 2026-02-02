@@ -17,6 +17,12 @@ public static class ConfigureAuth
         app.MapPost("/api/user/emailconfirmation", async (EmailCofirmation request, [FromServices] AuthHandler _handler)
            => await _handler.HandleEmailConfirmation(request));
 
+        app.MapPost("/api/user/forgetpassword", async (ForgetPassword request, [FromServices] AuthHandler _handler)
+           => await _handler.HandleForgetPassword(request));
+
+        app.MapPost("/api/user/resetpassword", async (ResetPassword request, [FromServices] AuthHandler _handler)
+           => await _handler.HandleResetPassword(request));
+
         app.MapDelete("/api/user/remove", async ([FromBody] RemoveUser request, [FromServices] AuthHandler _handler)
             => await _handler.HandleRemoveUser(request));
     }

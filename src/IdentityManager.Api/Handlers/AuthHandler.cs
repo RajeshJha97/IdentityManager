@@ -8,7 +8,7 @@ namespace IdentityManager.Api.Handlers;
 
 public class AuthHandler([FromServices] UserManager<ApplicationUser> userManager, [FromServices] SignInManager<ApplicationUser> signInManager,
     [FromServices] ILogger<AuthHandler> logger,
-    IValidator<UserRegistration> registerationValidator, IValidator<Login> loginValidator, IValidator<RemoveUser> removeUserValidator, IValidator<EmailCofirmation> emailConfirmationValidator)
+    IValidator<UserRegistration> registerationValidator, IValidator<Login> loginValidator, IValidator<RemoveUser> removeUserValidator, IValidator<EmailCofirmation> emailConfirmationValidator,IValidator<ForgetPassword> forgetPasswordValidator)
 {
     public async Task<IResult> HandleUserRegistration(UserRegistration request)
     {
@@ -181,7 +181,7 @@ public class AuthHandler([FromServices] UserManager<ApplicationUser> userManager
         };
 
         return Results.Ok(success);
-    }
+    }  
     public async Task<IResult> HandleRemoveUser(RemoveUser request)
     {
         logger.LogInformation("Login handler invoked: ");
@@ -230,4 +230,81 @@ public class AuthHandler([FromServices] UserManager<ApplicationUser> userManager
             Message = "User deleted from the identity."
         });
     }
+    public async Task<IResult> HandleForgetPassword(ForgetPassword request)
+    {
+        var validationResult = await forgetPasswordValidator.ValidateAsync(request);
+
+        if (!validationResult.IsValid)
+        {
+            var validationProblemDetails = new HttpValidationProblemDetails(validationResult.ToDictionary())
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "One or More validation errors occured.",
+                Detail = "See the error property for details."
+            };
+
+            return Results.BadRequest(validationProblemDetails);
+        }
+
+        var user = await userManager.FindByEmailAsync(request.Email);
+
+        if (user is null)
+        {
+            var validationProblemDetails = new
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "User is not available"                
+            };
+        }
+
+        var token = await userManager.GeneratePasswordResetTokenAsync(user!);
+
+        if (string.IsNullOrEmpty(token))
+        {
+            return Results.BadRequest(new { 
+            
+                Status=StatusCodes.Status400BadRequest,
+                Title="Something went wrong."
+            });
+        }
+
+        return Results.Ok(new { 
+        
+            Status=StatusCodes.Status200OK,
+            Data = new { 
+            
+                Tokken=token,
+                Email=user!.Email
+            }
+        });
+
+    }
+    public async Task<IResult> HandleResetPassword(ResetPassword request)
+    {
+        var user = await userManager.FindByEmailAsync(request.Email);
+
+        if (user is null)
+        {
+            var validationProblemDetails = new
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "User is not available"
+            };
+        }
+
+        var result = await userManager.ResetPasswordAsync(user!, request.Token, request.NewPassword);
+       
+        if (!result.Succeeded)
+        {
+            return Results.BadRequest(new
+            {
+
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Something went wrong."
+            });
+        }
+
+        return Results.Ok(new { Message = "Password has been reset successfully." });
+    }
+
 }
